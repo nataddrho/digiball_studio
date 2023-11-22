@@ -5,6 +5,7 @@ import time
 import numpy as np
 import file_access
 
+
 def degrees2clock(angle_deg):
     #Convert degrees into hours and minutes (o'clocks)
     a = angle_deg
