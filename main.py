@@ -4,7 +4,7 @@ import PIL.Image, PIL.ImageTk
 import time
 import numpy as np
 import file_access
-
+import pickle
 
 def degrees2clock(angle_deg):
     #Convert degrees into hours and minutes (o'clocks)
@@ -19,10 +19,20 @@ def degrees2clock(angle_deg):
     return "%i:%s"%(hour,("%i"%minutes).zfill(2))
 
 class App:
-    def __init__(self, window, window_title, video_source=0):
+    def __init__(self, window, window_title, video_source=0, project_name=None):
 
         # Open file
-        self.dataLog = file_access.DataLog(starting_epoch=1696112663136)
+        video_delay = 0  # seconds
+        start_data = 1696112722540  # epoch
+        self.dataLog = file_access.DataLog(starting_epoch=start_data, data_video_delay_seconds=video_delay)
+
+        if project_name is not None:
+            self.load_project(project_name)
+
+        self.table_length_inches = 100
+        self.ball_diameter_inches = 2.25
+        self.tip_diameter_inches = 12 / 25.4
+        self.tip_radius_inches = 0.358 #dime
 
         self.play_video = True
         self.auto_update_slider = True
@@ -45,8 +55,16 @@ class App:
         self.canvas.bind("<B3-Motion>", self.canvas_mouse_right_moved)
         self.canvas.bind("<ButtonRelease-3>", self.canvas_mouse_right_up)
         self.canvas.pack()
+        self.timeslider = tk.Canvas(window, width = 400, height = 50, bg='black')
+        self.timeslider.bind("<Button-1>", self.timeslider_mouse_left_down)
+        self.timeslider.bind("<B1-Motion>", self.timeslider_mouse_left_moved)
+        self.timeslider.bind("<ButtonRelease-1>", self.timeslider_mouse_left_up)
+        self.timeslider.pack()
 
         self.build_video_controls(window)
+        self.time_after_shot = None
+        self.time_selected = None
+        self.time_slider_position = None
 
 
         # Text boxes
@@ -66,7 +84,21 @@ class App:
         self.txt_rpm = tk.Entry(window, width=10, textvariable=self.txt_rpm_value)
         self.txt_rpm.pack(side=tk.LEFT)
 
+        self.txt_feet_value = tk.StringVar()
+        self.txt_feet = tk.Entry(window, width=10, textvariable=self.txt_feet_value)
+        self.txt_feet.pack(side=tk.LEFT)
 
+        self.txt_mph_value = tk.StringVar()
+        self.txt_mph = tk.Entry(window, width=10, textvariable=self.txt_mph_value)
+        self.txt_mph.pack(side=tk.LEFT)
+
+        self.txt_tipper_value = tk.StringVar()
+        self.txt_tipper = tk.Entry(window, width=10, textvariable=self.txt_tipper_value)
+        self.txt_tipper.pack(side=tk.LEFT)
+
+        self.txt_time_selected_value = tk.StringVar()
+        self.txt_time_selected = tk.Entry(window, width=10, textvariable=self.txt_time_selected_value)
+        self.txt_time_selected.pack(side=tk.LEFT)
 
 
 
@@ -75,6 +107,20 @@ class App:
         self.after_handle = None
         self.update()
         self.window.mainloop()
+
+    def save_project(self, project_name):
+        with open(project_name, 'wb') as fp:
+            pickle.dump(self.dataLog.get_all_shot_data(), fp)
+
+    def load_project(self, project_name):
+        try:
+            with open(project_name, 'rb') as fp:
+                self.dataLog.set_all_shot_data(pickle.load(fp))
+                return True
+        except:
+            return False
+
+
 
     def build_video_controls(self, window):
         frame = tk.Frame(window)
@@ -107,61 +153,154 @@ class App:
         self.btn_forward = tk.Button(frame_buttons, text=">>", width=5, command=self.forward)
         self.btn_forward.pack(side=tk.LEFT)
 
+    def draw_on_timeslider(self):
+        canvas = self.timeslider
+        width = canvas.winfo_width()
+        height = canvas.winfo_height()
+
+        #Plot gyromag data
+        if 'gymag' in self.shot_data:
+            data = self.shot_data['gymag']
+            N = len(data)
+
+            #Update slider time
+            if self.time_slider_position is not None:
+                self.time_selected = self.time_slider_position/width * N/104 #104 Hz sample rate
+                if self.time_selected<0:
+                    self.time_selected = 0
+                self.txt_time_selected_value.set('%.2f s'%self.time_selected)
+
+            for i in range(N-1):
+                y1 = height - int(height * data[i] / 256)
+                y2 = height - int(height * data[i+1] / 256)
+                x1 = i * width/N
+                x2 = (i + 1) * width/N
+                self.draw_line_on_canvas(canvas, "plot_%i"%i, x1, y1, x2, y2, 1, 'cyan')
+                if data[i]&1==1:
+                    self.draw_line_on_canvas(canvas, "impact_%i", x1, height, x1, height*0.8, 1, 'orange')
+
+        #Draw selected slider position
+        if self.time_slider_position is not None:
+            x = self.time_slider_position
+            self.draw_line_on_canvas(canvas, "slider", x, 0, x, height, 2, 'green')
+
+
     def draw_on_canvas(self):
 
         #Draw homographic polygon
         line_width = 2
         a = self.homographic_points
         b = self.distance_points
+        canvas = self.canvas
         line_color = 'cyan'
-        self.draw_line_on_canvas("hom1", a[0][0], a[0][1], a[1][0], a[1][1], line_width, line_color)
+        self.draw_line_on_canvas(canvas,"hom1", a[0][0], a[0][1], a[1][0], a[1][1], line_width, line_color)
         line_color = 'blue'
-        self.draw_line_on_canvas("hom2", a[1][0], a[1][1], a[2][0], a[2][1], line_width, line_color)
+        self.draw_line_on_canvas(canvas,"hom2", a[1][0], a[1][1], a[2][0], a[2][1], line_width, line_color)
         line_color = 'cyan'
-        self.draw_line_on_canvas("hom3", a[2][0], a[2][1], a[3][0], a[3][1], line_width, line_color)
+        self.draw_line_on_canvas(canvas,"hom3", a[2][0], a[2][1], a[3][0], a[3][1], line_width, line_color)
         line_color = 'blue'
-        self.draw_line_on_canvas("hom4", a[3][0], a[3][1], a[0][0], a[0][1], line_width, line_color)
+        self.draw_line_on_canvas(canvas,"hom4", a[3][0], a[3][1], a[0][0], a[0][1], line_width, line_color)
 
         line_color = 'red'
-        self.draw_line_on_canvas("dist", b[0][0], b[0][1], b[1][0], b[1][1], line_width, line_color)
+        self.draw_line_on_canvas(canvas,"dist", b[0][0], b[0][1], b[1][0], b[1][1], line_width, line_color)
+
 
         #Draw ball graphic
-        ang = self.shot_data['deg']
-        r = 45
-        center = 50
-        x = r * np.sin(ang*np.pi/180)
-        y = -r * np.cos(ang*np.pi/180)
+        if self.time_after_shot is not None:
 
-        line_color = 'white'
-        self.draw_oval_on_canvas("ball_circle",center, center, r, line_width, line_color)
+            if self.time_after_shot>0 and self.time_after_shot<10:
 
-        line_color = 'red'
-        self.draw_line_on_canvas("spin_angle",center,center,center+x,center+y,line_width,line_color)
+                ang = self.shot_data['deg']
+                r = 45
+                center = 50
+                x = r * np.sin(ang*np.pi/180)
+                y = -r * np.cos(ang*np.pi/180)
+
+                line_color = 'black'
+                fill_color = 'white'
+                self.draw_oval_on_canvas(canvas,"ball_circle",center, center, r, line_width, line_color, fill_color)
+
+                line_color = 'gray'
+                self.draw_line_on_canvas(canvas, "grid_1", center, center - r, center, center + r, 1, line_color)
+                self.draw_line_on_canvas(canvas, "grid_2", center - r, center, center + r, center, 1, line_color)
+
+                line_color = 'red'
+                self.draw_line_on_canvas(canvas, "spin_angle", center, center, center + x, center + y, line_width,
+                                         line_color)
+
+                if 'tip' in self.shot_data:
+                    tip_percent = self.shot_data['tip']
+                    tip_norm = tip_percent / 100
+                    tip_outline_offset = tip_norm * r * 2 * self.tip_radius_inches / self.ball_diameter_inches
+                    tip_outline_offset_radius = r * tip_norm + tip_outline_offset
+                    to_x = tip_outline_offset_radius * np.sin(ang * np.pi / 180)
+                    to_y = tip_outline_offset_radius * -np.cos(ang * np.pi / 180)
+                    tip_outline_draw_radius = r * self.tip_diameter_inches/self.ball_diameter_inches
+
+                    x = tip_norm * r * np.sin(ang * np.pi / 180)
+                    y = tip_norm * -r * np.cos(ang * np.pi / 180)
+
+                    line_color = 'black'
+                    fill_color = 'blue'
+                    self.draw_oval_on_canvas(canvas,"tip_outline",center+to_x, center+to_y, tip_outline_draw_radius, line_width, line_color)
+                    self.draw_oval_on_canvas(canvas,"tip",center+x, center+y, 3, line_width, line_color, fill_color)
+
+                # Draw text
+                clock = degrees2clock(self.shot_data['deg'])
+                self.draw_text_on_canvas(canvas, "text1", 5, 2 * r + 20, clock)
+                rpm = self.shot_data['rpm']
+                self.draw_text_on_canvas(canvas, "text2", 5, 2 * r + 40, "%i rpm"%rpm)
+                if 'tip' in self.shot_data:
+                    feet = self.shot_data['inch']/12
+                    self.draw_text_on_canvas(canvas, "text3", 5, 2 * r + 60, "%.2f ft" % feet)
+                    mph = self.shot_data['mph']
+                    self.draw_text_on_canvas(canvas, "text4", 5, 2 * r + 80, "%.2f mph"%mph)
+                    tipper = self.shot_data['tip']
+                    self.draw_text_on_canvas(canvas, "text5", 5, 2 * r + 100, "%.1f%%"%tipper)
+                    sfr = rpm * 2 * np.pi  / 60 / (17.6 * mph / self.ball_diameter_inches)
+                    self.draw_text_on_canvas(canvas, "text6", 5, 2 * r + 120, "%.2f sfr" % sfr)
 
 
-
-
-    def draw_line_on_canvas(self,line_name,x1,y1,x2,y2,line_width,line_color):
-        #Updates lines if they already exist rather than wasting memory redrawing lines over and over again
-        item_id = self.canvas.find_withtag(line_name)
+    def draw_text_on_canvas(self,canvas,text_name,x1,y1,text,fill_color='white'):
+        #Updates text if they already exist rather than wasting memory redrawing text over and over again
+        item_id = canvas.find_withtag(text_name)
+        font = ('Helvetica 15')
         if item_id:
-            self.canvas.coords(line_name,x1,y1,x2,y2)
-            self.canvas.tag_raise(line_name)
+            canvas.itemconfigure(item_id, text=text)
+            canvas.tag_raise(text_name)
         else:
-            self.canvas.create_line(x1,y1,x2,y2,width=line_width,fill=line_color,tags=line_name)
+            canvas.create_text(x1,y1,text=text,fill=fill_color,tags=text_name, font=font, anchor="w")
 
-    def draw_oval_on_canvas(self,line_name,x,y,r,line_width,line_color):
+    def draw_line_on_canvas(self,canvas,line_name,x1,y1,x2,y2,line_width,line_color):
+        #Updates lines if they already exist rather than wasting memory redrawing lines over and over again
+        item_id = canvas.find_withtag(line_name)
+        if item_id:
+            canvas.coords(line_name,x1,y1,x2,y2)
+            canvas.tag_raise(line_name)
+        else:
+            canvas.create_line(x1,y1,x2,y2,width=line_width,fill=line_color,tags=line_name)
+
+    def draw_rect_on_canvas(self,canvas,line_name,x1,y1,x2,y2,line_width,line_color):
+        #Updates lines if they already exist rather than wasting memory redrawing lines over and over again
+        item_id = canvas.find_withtag(line_name)
+        if item_id:
+            canvas.coords(line_name,x1,y1,x2,y2)
+            canvas.tag_raise(line_name)
+        else:
+            canvas.create_rectangle(x1,y1,x2,y2,width=line_width,fill=line_color,tags=line_name)
+
+    def draw_oval_on_canvas(self,canvas,line_name,x,y,r,line_width,line_color,fill_color=''):
         #Updates lines if they already exist rather than wasting memory redrawing lines over and over again
         x1 = x-r
         x2 = x+r
         y1 = y-r
         y2 = y+r
-        item_id = self.canvas.find_withtag(line_name)
+        item_id = canvas.find_withtag(line_name)
         if item_id:
-            self.canvas.coords(line_name,x1,y1,x2,y2)
-            self.canvas.tag_raise(line_name)
+            canvas.coords(line_name,x1,y1,x2,y2)
+            canvas.tag_raise(line_name)
         else:
-            self.canvas.create_oval(x1,y1,x2,y2,width=line_width,fill=line_color,tags=line_name)
+            canvas.create_oval(x1,y1,x2,y2,width=line_width,outline=line_color,fill=fill_color,tags=line_name)
 
     def snapshot(self):
         # Get a frame from the video source
@@ -179,15 +318,30 @@ class App:
 
         frame_time_seconds = self.vid.get_frame_time()
         self.txt_frame_time_value.set('%.3f'%frame_time_seconds)
-        self.shot_data = self.dataLog.get_next_shot_data(frame_time_seconds)
+        self.shot_index, self.shot_data, tmp = self.dataLog.get_next_shot_data(frame_time_seconds)
+        shot_time_seconds = self.shot_data['time']
+        self.time_after_shot = frame_time_seconds - shot_time_seconds
 
         return ret
+
+    def calculate_and_save_tip_position(self, dist_norm, time_sec, spin_rpm):
+
+        speed_mph = 3600/63360 * self.table_length_inches * dist_norm / time_sec
+        tip_percent = 0.0030122 * spin_rpm / (1.125 * speed_mph) * 1.1
+        tip_inches = tip_percent * 1.125
+
+        #Save data to memory
+        self.dataLog.set_shot_data(self.shot_index, 'mph', speed_mph)
+        self.dataLog.set_shot_data(self.shot_index, 'inch', self.table_length_inches * dist_norm)
+        self.dataLog.set_shot_data(self.shot_index, 'tip', tip_percent*100)
+        self.dataLog.set_shot_data(self.shot_index, 'secsl', time_sec)
+
 
     def update_shot_data_info(self):
         data = self.shot_data
         if data is not None:
             if 'rpm' in data:
-                self.txt_rpm_value.set('%.2f'%self.shot_data['rpm'])
+                self.txt_rpm_value.set('%.1f rpm'%self.shot_data['rpm'])
             else:
                 self.txt_rpm_value.set('')
 
@@ -197,6 +351,20 @@ class App:
             else:
                 self.txt_degrees_value.set('')
 
+            if 'mph' in data:
+                self.txt_mph_value.set('%.2f mph'%self.shot_data['mph'])
+            else:
+                self.txt_mph_value.set('')
+
+            if 'inch' in data:
+                self.txt_feet_value.set('%.2f ft'%(self.shot_data['inch']/12))
+            else:
+                self.txt_feet_value.set('')
+
+            if 'tip' in data:
+                self.txt_tipper_value.set('%.2f%%'%self.shot_data['tip'])
+            else:
+                self.txt_tipper_value.set('')
 
     def update(self):
         if self.play_video:
@@ -207,8 +375,18 @@ class App:
                     self.sld_position.set(frame)
 
         self.draw_on_canvas()
+        self.draw_on_timeslider()
         self.update_shot_data_info()
         self.after_handle = self.window.after(self.delay, self.update)
+
+    def update_if_paused(self):
+        if not self.play_video:
+            ret = self.copy_frame_to_canvas()
+            frame, total = self.vid.get_frame_number()
+            self.sld_position.set(frame)
+            self.draw_on_canvas()
+            self.draw_on_timeslider()
+            self.update_shot_data_info()
 
     def move_frame_delta(self, frames):
         frame, total = self.vid.get_frame_number()
@@ -235,15 +413,39 @@ class App:
 
     def rewind(self):
         self.move_frame_delta(-100)
+        self.update_if_paused()
 
     def rewind_single(self):
         self.move_frame_delta(-1)
+        self.update_if_paused()
 
     def forward(self):
         self.move_frame_delta(100)
+        self.update_if_paused()
 
     def forward_single(self):
         self.move_frame_delta(1)
+        self.update_if_paused()
+
+    def timeslider_mouse_left_down(self, event):
+        x, y = event.x, event.y
+
+
+    def timeslider_mouse_left_moved(self, event):
+        x, y = event.x, event.y
+        self.time_slider_position = x
+
+        if self.distance_normalized_to_table_length > 0 and self.time_selected is not None:
+            dist_norm = self.distance_normalized_to_table_length
+            time_sec = self.time_selected
+            spin_rpm = self.shot_data['rpm']
+            self.calculate_and_save_tip_position(dist_norm, time_sec, spin_rpm)
+
+
+
+    def timeslider_mouse_left_up(self, event):
+        x, y = event.x, event.y
+
 
     def canvas_mouse_left_down(self, event):
         x, y = event.x, event.y
@@ -330,6 +532,9 @@ class App:
 
 
 
+
+
+
 class MyVideoCapture:
     def __init__(self, video_source=0):
         # Open the video source
@@ -376,4 +581,7 @@ class MyVideoCapture:
 if __name__=='__main__':
 
     # Create a window and pass it to the Application object
-    App(tk.Tk(), "Tkinter and OpenCV", "digiball_demo_stream_1.mp4")
+    project_name = 'project.dat'
+    app = App(tk.Tk(), "Tkinter and OpenCV", "digiball_demo_stream_1_trimmed.mp4", project_name)
+    app.save_project(project_name)
+
