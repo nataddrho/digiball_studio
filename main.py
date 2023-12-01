@@ -19,10 +19,10 @@ class App:
         # Open file
         self.dataLog = file_access.DataLog()
 
-        self.table_length_inches = 100
-        self.ball_diameter_inches = 2.25
-        self.tip_diameter_inches = 12 / 25.4
-        self.tip_radius_inches = 0.358 #dime
+        self.table_length_inches = auxiliary.table_length_inches
+        self.ball_diameter_inches = auxiliary.ball_diameter_inches
+        self.tip_diameter_inches = auxiliary.tip_diameter_inches
+        self.tip_radius_inches = auxiliary.tip_radius_inches
 
         self.play_video = True
         self.auto_update_slider = True
@@ -30,7 +30,7 @@ class App:
         self.window.title(window_title)
         self.video_source = video_source
         # open video source (by default this will try to open the computer webcam)
-        self.vid = MyVideoCapture(self.video_source)
+        self.vid = auxiliary.VideoCapture(self.video_source)
         # Create a canvas that can fit the above video source size
         self.width, self.height = self.vid.get_dimensions()
         self.homographic_points = [[self.width-5,5],[self.width-5,self.height-5],[5,self.height-5],[5,5]]
@@ -97,6 +97,7 @@ class App:
         self.window_update_delay = 15
         self.after_handle = None
         self.update()
+        #self.window.attributes('-topmost', True) #Keep window on top
         self.window.mainloop()
 
     def save_project(self, project_file_name):
@@ -153,6 +154,14 @@ class App:
         self.btn_forward_single.pack(side=tk.LEFT)
         self.btn_forward = tk.Button(frame_buttons, text=">>", width=5, command=self.forward)
         self.btn_forward.pack(side=tk.LEFT)
+        self.btn_export = tk.Button(frame_buttons, text="Export Video", command=self.export)
+        self.btn_export.pack(side=tk.LEFT)
+
+
+    def export(self):
+        self.pause()
+        out = render.Renderer(self.dataLog)
+        out.render_video(self.video_source)
 
     def draw_on_timeslider(self):
         canvas = self.timeslider
@@ -542,51 +551,6 @@ class App:
 
 
 
-
-
-
-class MyVideoCapture:
-    def __init__(self, video_source=0):
-        # Open the video source
-        self._current_frame = 0
-        self._vid = cv2.VideoCapture(video_source)
-        self._total_frames = int(self._vid.get(cv2.CAP_PROP_FRAME_COUNT))
-        if not self._vid.isOpened():
-            raise ValueError("Unable to open video source", video_source)
-        # Get video source width and height
-        self._width = self._vid.get(cv2.CAP_PROP_FRAME_WIDTH)
-        self._height = self._vid.get(cv2.CAP_PROP_FRAME_HEIGHT)
-
-    def get_frame_time(self):
-        return self._vid.get(cv2.CAP_PROP_POS_MSEC)/1000
-
-    def get_frame(self):
-        if self._vid.isOpened():
-            ret, frame = self._vid.read()
-            if ret:
-                # Return a boolean success flag and the current frame converted to BGR
-                obj = (ret, cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-            else:
-                obj = (ret, None)
-        else:
-            obj = (ret, None)
-
-        self._current_frame = self._vid.get(cv2.CAP_PROP_POS_FRAMES)
-        return obj
-
-    def get_dimensions(self):
-        return (self._width, self._height)
-
-    def get_frame_number(self):
-        return (self._current_frame, self._total_frames)
-
-    def goto_frame(self, frame_number):
-        self._vid.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
-
-    # Release the video source when the object is destroyed
-    def __del__(self):
-        if self._vid.isOpened():
-            self._vid.release()
 
 
 if __name__=='__main__':
