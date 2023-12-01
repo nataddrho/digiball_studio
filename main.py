@@ -8,6 +8,7 @@ import pickle
 import src.file_access as file_access
 import src.auxiliary as auxiliary
 import src.alignment_tool as alignment_tool
+import src.render as render
 
 
 class App:
@@ -305,7 +306,9 @@ class App:
         # Get a frame from the video source
         ret, frame = self.vid.get_frame()
         if ret:
-            cv2.imwrite("frame-" + time.strftime("%d-%m-%Y-%H-%M-%S") + ".jpg", cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
+            rClass = render.Renderer(self.dataLog)
+            rendered_frame = rClass.draw_hud_on_frame(frame, self.time_after_shot, self.shot_data)
+            cv2.imwrite("frame-" + time.strftime("%Y-%m-%d-%H-%M-%S") + ".jpg", cv2.cvtColor(rendered_frame, cv2.COLOR_RGB2BGR))
 
     def align_data(self):
         self.pause()
