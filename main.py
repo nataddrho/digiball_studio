@@ -1,33 +1,22 @@
 import tkinter as tk
+from tkinter import filedialog
 import cv2
 import PIL.Image, PIL.ImageTk
 import time
 import numpy as np
-import file_access
 import pickle
+import src.file_access as file_access
+import src.auxiliary as auxiliary
+import src.alignment_tool as alignment_tool
 
-def degrees2clock(angle_deg):
-    #Convert degrees into hours and minutes (o'clocks)
-    a = angle_deg
-    if a<0:
-        a+=360
-    hour = np.floor(a * 12/360.0)
-    minutes = a*12/360.0 - hour
-    if hour==0:
-        hour = 12.0
-    minutes = minutes*60
-    return "%i:%s"%(hour,("%i"%minutes).zfill(2))
 
 class App:
-    def __init__(self, window, window_title, video_source=0, project_name=None):
+    def __init__(self, window, video_source=0, project_name=None):
+
+        window_title = "DigiBall Studio"
 
         # Open file
-        video_delay = 0  # seconds
-        start_data = 1696112722540  # epoch
-        self.dataLog = file_access.DataLog(starting_epoch=start_data, data_video_delay_seconds=video_delay)
-
-        if project_name is not None:
-            self.load_project(project_name)
+        self.dataLog = file_access.DataLog()
 
         self.table_length_inches = 100
         self.ball_diameter_inches = 2.25
@@ -100,22 +89,31 @@ class App:
         self.txt_time_selected = tk.Entry(window, width=10, textvariable=self.txt_time_selected_value)
         self.txt_time_selected.pack(side=tk.LEFT)
 
+        #Load project settings
+        if project_name is not None:
+            self.load_project(project_name)
 
-
-
-        self.delay = 15
+        self.window_update_delay = 15
         self.after_handle = None
         self.update()
         self.window.mainloop()
 
-    def save_project(self, project_name):
-        with open(project_name, 'wb') as fp:
-            pickle.dump(self.dataLog.get_all_shot_data(), fp)
+    def save_project(self, project_file_name):
+        with open(project_file_name, 'wb') as fp:
+            projData = {}
+            projData["Shot Data"] = self.dataLog.get_all_shot_data()
+            projData["HCoords"] = self.homographic_points
+            projData["DCoords"] = self.distance_points
+            projData["Video File Name"] = self.video_source
+            pickle.dump(projData, fp)
 
-    def load_project(self, project_name):
+    def load_project(self, project_file_name):
         try:
-            with open(project_name, 'rb') as fp:
-                self.dataLog.set_all_shot_data(pickle.load(fp))
+            with open(project_file_name, 'rb') as fp:
+                projData = pickle.load(fp)
+                self.dataLog.set_all_shot_data(projData["Shot Data"])
+                self.homographic_points = projData["HCoords"]
+                self.distance_points = projData["DCoords"]
                 return True
         except:
             return False
@@ -138,7 +136,9 @@ class App:
         # Button that lets the user take a snapshot
         frame_buttons = tk.Frame(frame)
         frame_buttons.pack(anchor=tk.CENTER, expand=True)
-        self.btn_snapshot = tk.Button(frame_buttons, text="Snapshot", width=10, command=self.snapshot)
+        self.btn_align_data = tk.Button(frame_buttons, text="Align Data", command=self.align_data)
+        self.btn_align_data.pack(side=tk.LEFT)
+        self.btn_snapshot = tk.Button(frame_buttons, text="Snapshot", command=self.snapshot)
         self.btn_snapshot.pack(side=tk.LEFT)
         self.btn_rewind = tk.Button(frame_buttons, text="<<", width=5, command=self.rewind)
         self.btn_rewind.pack(side=tk.LEFT)
@@ -146,7 +146,7 @@ class App:
         self.btn_rewind_single.pack(side=tk.LEFT)
         self.btn_pause = tk.Button(frame_buttons, text="||", width=5, command=self.pause)
         self.btn_pause.pack(side=tk.LEFT)
-        self.btn_play = tk.Button(frame_buttons, text="|>", width=5, command=self.play)
+        self.btn_play = tk.Button(frame_buttons, text="Play", width=5, command=self.play)
         self.btn_play.pack(side=tk.LEFT)
         self.btn_forward_single = tk.Button(frame_buttons, text=">", width=5, command=self.forward_single)
         self.btn_forward_single.pack(side=tk.LEFT)
@@ -246,7 +246,7 @@ class App:
                     self.draw_oval_on_canvas(canvas,"tip",center+x, center+y, 3, line_width, line_color, fill_color)
 
                 # Draw text
-                clock = degrees2clock(self.shot_data['deg'])
+                clock = auxiliary.degrees2clock(self.shot_data['deg'])
                 self.draw_text_on_canvas(canvas, "text1", 5, 2 * r + 20, clock)
                 rpm = self.shot_data['rpm']
                 self.draw_text_on_canvas(canvas, "text2", 5, 2 * r + 40, "%i rpm"%rpm)
@@ -257,9 +257,8 @@ class App:
                     self.draw_text_on_canvas(canvas, "text4", 5, 2 * r + 80, "%.2f mph"%mph)
                     tipper = self.shot_data['tip']
                     self.draw_text_on_canvas(canvas, "text5", 5, 2 * r + 100, "%.1f%%"%tipper)
-                    sfr = rpm * 2 * np.pi  / 60 / (17.6 * mph / self.ball_diameter_inches)
-                    self.draw_text_on_canvas(canvas, "text6", 5, 2 * r + 120, "%.2f sfr" % sfr)
-
+                    sfr = rpm * 2 * np.pi  / 60 / (17.6 * mph / self.ball_diameter_inches) #radians/radius
+                    self.draw_text_on_canvas(canvas, "text6", 5, 2 * r + 120, "%.2f rad/r" % sfr)
 
     def draw_text_on_canvas(self,canvas,text_name,x1,y1,text,fill_color='white'):
         #Updates text if they already exist rather than wasting memory redrawing text over and over again
@@ -308,6 +307,14 @@ class App:
         if ret:
             cv2.imwrite("frame-" + time.strftime("%d-%m-%Y-%H-%M-%S") + ".jpg", cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
 
+    def align_data(self):
+        self.pause()
+        dialog = alignment_tool.AlignmentDialog(self.window,
+                                                self.dataLog.get_all_tags(),
+                                                self.vid.get_frame_time(),
+                                                self.dataLog)
+
+
     def copy_frame_to_canvas(self):
 
         # Get a frame from the video source
@@ -317,7 +324,7 @@ class App:
             self.canvas.create_image(0, 0, image=self.photo, anchor=tk.NW)
 
         frame_time_seconds = self.vid.get_frame_time()
-        self.txt_frame_time_value.set('%.3f'%frame_time_seconds)
+        self.txt_frame_time_value.set('%.3fs'%frame_time_seconds)
         self.shot_index, self.shot_data, tmp = self.dataLog.get_next_shot_data(frame_time_seconds)
         shot_time_seconds = self.shot_data['time']
         self.time_after_shot = frame_time_seconds - shot_time_seconds
@@ -346,7 +353,7 @@ class App:
                 self.txt_rpm_value.set('')
 
             if 'deg' in data:
-                clock = degrees2clock(self.shot_data['deg'])
+                clock = auxiliary.degrees2clock(self.shot_data['deg'])
                 self.txt_degrees_value.set(clock)
             else:
                 self.txt_degrees_value.set('')
@@ -377,7 +384,7 @@ class App:
         self.draw_on_canvas()
         self.draw_on_timeslider()
         self.update_shot_data_info()
-        self.after_handle = self.window.after(self.delay, self.update)
+        self.after_handle = self.window.after(self.window_update_delay, self.update)
 
     def update_if_paused(self):
         if not self.play_video:
@@ -499,7 +506,7 @@ class App:
 
     def update_homographic_distance(self):
         self.distance_normalized_to_table_length = self.get_homographic_distance(1,0.5)
-        self.txt_distance_value.set('%.3f'%self.distance_normalized_to_table_length)
+        self.txt_distance_value.set('%.3f\u2662'%(self.distance_normalized_to_table_length*8))
 
     def get_homographic_distance(self, scaleX, scaleY):
         #Calculates the distance selected based on the homographic bounding polygon
@@ -578,10 +585,15 @@ class MyVideoCapture:
         if self._vid.isOpened():
             self._vid.release()
 
+
 if __name__=='__main__':
 
-    # Create a window and pass it to the Application object
-    project_name = 'project.dat'
-    app = App(tk.Tk(), "Tkinter and OpenCV", "digiball_demo_stream_1_trimmed.mp4", project_name)
-    app.save_project(project_name)
+    filetypes = [("Video",".mp4")]
+    file_path = filedialog.askopenfilename(title='Select video', filetypes=filetypes)
+    video_file_name = file_path
+    project_file_name = "%s.proj" % video_file_name
+
+    #Main app
+    app = App(tk.Tk(), video_file_name, project_file_name)
+    app.save_project(project_file_name) #Save project on close
 
