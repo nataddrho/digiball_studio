@@ -1,5 +1,7 @@
 # digiball_studio
 
+Version 1.0.0
+
 Usage example video: https://youtu.be/2rfpNHpOLc0?si=scOqSBXc5XAaWAz9
 
 Rendered video example: https://youtu.be/VMZt8jp8GRs
