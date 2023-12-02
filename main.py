@@ -14,7 +14,7 @@ import src.render as render
 class App:
     def __init__(self, window, video_source=0, project_name=None):
 
-        window_title = "DigiBall Studio"
+        window_title = "DigiBall Studio v1.0.0"
 
         # Open file
         self.dataLog = file_access.DataLog()
@@ -266,9 +266,9 @@ class App:
                     mph = self.shot_data['mph']
                     self.draw_text_on_canvas(canvas, "text4", 5, 2 * r + 80, "%.2f mph"%mph)
                     tipper = self.shot_data['tip']
-                    self.draw_text_on_canvas(canvas, "text5", 5, 2 * r + 100, "%.1f%%"%tipper)
-                    sfr = rpm * 2 * np.pi  / 60 / (17.6 * mph / self.ball_diameter_inches) #radians/radius
-                    self.draw_text_on_canvas(canvas, "text6", 5, 2 * r + 120, "%.2f rad/r" % sfr)
+                    self.draw_text_on_canvas(canvas, "text5", 5, 2 * r + 100, "%.1f%%"%tipper)                    
+                    sfr = np.pi * self.ball_diameter_inches / 1056 * rpm / mph
+                    self.draw_text_on_canvas(canvas, "text6", 5, 2 * r + 120, "%.2f SFR" % sfr)
 
     def draw_text_on_canvas(self,canvas,text_name,x1,y1,text,fill_color='white'):
         #Updates text if they already exist rather than wasting memory redrawing text over and over again

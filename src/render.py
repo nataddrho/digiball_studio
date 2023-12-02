@@ -146,9 +146,8 @@ class Renderer:
                     feet = "%.2f ft" % (shot_data['inch'] / 12)
                     mph = "%.2f mph" % (shot_data['mph'])
                     tipper = "%.1f%%" % (shot_data['tip'])
-                    sfr = shot_data['rpm'] * 2 * np.pi / 60 / (
-                                17.6 * shot_data['mph'] / auxiliary.ball_diameter_inches)  # radians/radius
-                    sfrt = "%.2f rad/r"%sfr
+                    sfr = np.pi * auxiliary.ball_diameter_inches / 1056 * shot_data['rpm'] / shot_data['mph']
+                    sfrt = "%.2f SFR"%sfr
                     texts = (clock, rpm, feet, mph, tipper, sfrt)
                 else:
                     texts = (clock, rpm)
