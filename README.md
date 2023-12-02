@@ -4,7 +4,7 @@ Version 1.0.0
 
 Usage example video: https://youtu.be/2rfpNHpOLc0?si=scOqSBXc5XAaWAz9
 
-Rendered video example: https://youtu.be/CT57vfgTYi8
+Rendered video example: https://youtu.be/rC_Oi0zrVlU
 
 Information about the DigiBall: https://www.digicue.net/digiball
 
