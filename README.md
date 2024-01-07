@@ -12,8 +12,18 @@ Information about the DigiBall: https://www.digicue.net/digiball
 
 This is an experimental python-based post-processing program for combining DigiBall data (shared from the mobile app) to a video recording. Distance is selected by the user as well as the collision time of the target, giving linear speed. Once linear speed is available, a lot of information about the shot can be shown in a heads-up display.
 
-## Install Dependencies
-requires opencv, numpy, pillow
+## How to run this project
+1. Clone the code to the machine you'd like to run it from
+2. Navigate to this project directory in a terminal window
+3. Make sure you have Python and Pip installed on this machine
+4. Run (while being in the project home directory) `python -m venv venv` to create a virtrual environment
+5. Run `source venv/bin/activate` to activate this virtual environment
+6. Run `pip install -r requirements.txt` to install project dependencies
+7. Run `python main.py`
+
+## How to update requirements.txt
+1. Navigate to the project directory in a terminal and activate the virtualenv (step 5 above)
+2. Run `pip freeze > requirements.txt`
 
 ## How To Generate Data for DigiBall Studio
 
@@ -29,7 +39,7 @@ requires opencv, numpy, pillow
 ## How to Import Data into DigiBall Studio
 
 1. Clone or copy the code to your computer.
-2. Copy both the video file and your digiball.log into the main folder (overwrite the existing demo digiball.log file). This data file can be shared from the app by clicking the Share Data button in the Settings tab. 
+2. Copy both the video file and your digiball.log into the main folder (overwrite the existing demo digiball.log file). This data file can be shared from the app by clicking the Share Data button in the Settings tab.
 3. Run main.py
 4. Select the video file with the file select dialog.
 5. Move the slider so that the video is on the frame with the visual queue sync you created earlier.
