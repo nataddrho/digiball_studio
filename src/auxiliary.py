@@ -18,6 +18,12 @@ def degrees2clock(angle_deg):
         hour = 12.0
     minutes = minutes*60
     return "%i:%s"%(hour,("%i"%minutes).zfill(2))
+    
+def flip_angle(angle_deg):
+    x = np.sin(np.pi/180*angle_deg)
+    y = np.cos(np.pi/180*angle_deg)
+    return 180/np.pi*np.arctan2(x,-y)
+    
 
 class VideoCapture:
     def __init__(self, video_source=0):

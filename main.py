@@ -1,3 +1,5 @@
+#Nathan Rhoades LLC
+
 import tkinter as tk
 from tkinter import filedialog
 import cv2
@@ -67,7 +69,7 @@ class App:
         self.txt_frame_time.pack(side=tk.LEFT)
 
         self.txt_degrees_value = tk.StringVar()
-        self.txt_degrees = tk.Entry(window, width=10, textvariable=self.txt_degrees_value)
+        self.txt_degrees = tk.Entry(window, width=15, textvariable=self.txt_degrees_value)
         self.txt_degrees.pack(side=tk.LEFT)
 
         self.txt_rpm_value = tk.StringVar()
@@ -142,6 +144,8 @@ class App:
         self.btn_align_data.pack(side=tk.LEFT)
         self.btn_snapshot = tk.Button(frame_buttons, text="Snapshot", command=self.snapshot)
         self.btn_snapshot.pack(side=tk.LEFT)
+        self.btn_flip = tk.Button(frame_buttons, text="Flip", command=self.flip)
+        self.btn_flip.pack(side=tk.LEFT)
         self.btn_rewind = tk.Button(frame_buttons, text="<<", width=5, command=self.rewind)
         self.btn_rewind.pack(side=tk.LEFT)
         self.btn_rewind_single = tk.Button(frame_buttons, text="<", width=5, command=self.rewind_single)
@@ -220,7 +224,7 @@ class App:
 
             if self.time_after_shot>0 and self.time_after_shot<10:
 
-                ang = self.shot_data['deg']
+                ang = self.corrected_deg(self.shot_data['deg'])
                 r = 45
                 center = 50
                 x = r * np.sin(ang*np.pi/180)
@@ -256,7 +260,7 @@ class App:
                     self.draw_oval_on_canvas(canvas,"tip",center+x, center+y, 3, line_width, line_color, fill_color)
 
                 # Draw text
-                clock = auxiliary.degrees2clock(self.shot_data['deg'])
+                clock = auxiliary.degrees2clock(self.corrected_deg(self.shot_data['deg']))
                 self.draw_text_on_canvas(canvas, "text1", 5, 2 * r + 20, clock)
                 rpm = self.shot_data['rpm']
                 self.draw_text_on_canvas(canvas, "text2", 5, 2 * r + 40, "%i rpm"%rpm)
@@ -356,6 +360,29 @@ class App:
         self.dataLog.set_shot_data(self.shot_index, 'secsl', time_sec)
 
 
+    def flip(self):
+        ret = self.dataLog.get_shot_data(self.shot_index, 'flip')
+        if (ret is None):
+            flip = True
+        else:
+            flip = not ret
+        self.dataLog.set_shot_data(self.shot_index, 'flip', flip)   
+
+    def is_flipped(self):
+        ret = self.dataLog.get_shot_data(self.shot_index, 'flip')
+        if (ret is None):
+            flip = False
+        else:
+            flip = ret
+        return flip
+        
+    def corrected_deg(self, angle_deg):        
+        if (self.is_flipped()):
+            return auxiliary.flip_angle(angle_deg)
+        else:
+            return angle_deg
+        
+
     def update_shot_data_info(self):
         data = self.shot_data
         if data is not None:
@@ -365,7 +392,10 @@ class App:
                 self.txt_rpm_value.set('')
 
             if 'deg' in data:
-                clock = auxiliary.degrees2clock(self.shot_data['deg'])
+                clock = auxiliary.degrees2clock(self.corrected_deg(self.shot_data['deg']))
+                if (self.is_flipped()):
+                    clock = "%s flipped"%clock
+                             
                 self.txt_degrees_value.set(clock)
             else:
                 self.txt_degrees_value.set('')

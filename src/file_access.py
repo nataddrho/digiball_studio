@@ -85,6 +85,12 @@ class DataLog:
 
     def set_shot_data(self, index, key, value):
         self._shotdata[index][key] = value
+        
+    def get_shot_data(self, index, key):
+        try:
+            return self._shotdata[index][key]
+        except:
+            return None
 
 
 
